@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		64A5FBF62DE508AD00F8995D /* AnyCodable in Frameworks */ = {isa = PBXBuildFile; productRef = 64A5FBF52DE508AD00F8995D /* AnyCodable */; };
+		64E14D2A2E0C0D2300793267 /* secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 64E14D292E0C0D1D00793267 /* secrets.xcconfig */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		641263C32DD22944008614A2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,11 +32,25 @@
 		641263B02DD22943008614A2 /* apilist.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = apilist.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		641263C22DD22944008614A2 /* apilistTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = apilistTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		641263CC2DD22944008614A2 /* apilistUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = apilistUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		64E14D292E0C0D1D00793267 /* secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		64E14D2C2E0C0D5900793267 /* Exceptions for "apilist" folder in "apilist" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 641263AF2DD22943008614A2 /* apilist */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		641263B22DD22943008614A2 /* apilist */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				64E14D2C2E0C0D5900793267 /* Exceptions for "apilist" folder in "apilist" target */,
+			);
 			path = apilist;
 			sourceTree = "<group>";
 		};
@@ -52,6 +71,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				64A5FBF62DE508AD00F8995D /* AnyCodable in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,6 +95,7 @@
 		641263A72DD22943008614A2 = {
 			isa = PBXGroup;
 			children = (
+				64E14D292E0C0D1D00793267 /* secrets.xcconfig */,
 				641263B22DD22943008614A2 /* apilist */,
 				641263C52DD22944008614A2 /* apilistTests */,
 				641263CF2DD22944008614A2 /* apilistUITests */,
@@ -112,6 +133,7 @@
 			);
 			name = apilist;
 			packageProductDependencies = (
+				64A5FBF52DE508AD00F8995D /* AnyCodable */,
 			);
 			productName = apilist;
 			productReference = 641263B02DD22943008614A2 /* apilist.app */;
@@ -195,6 +217,10 @@
 			);
 			mainGroup = 641263A72DD22943008614A2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				64A5FBF42DE508AD00F8995D /* XCRemoteSwiftPackageReference "AnyCodable" */,
+				648B56082DF3587800AB50F8 /* XCRemoteSwiftPackageReference "swift-algorithms" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 641263B12DD22943008614A2 /* Products */;
 			projectDirPath = "";
@@ -212,6 +238,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				64E14D2A2E0C0D2300793267 /* secrets.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -271,6 +298,7 @@
 /* Begin XCBuildConfiguration section */
 		641263D42DD22944008614A2 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 64E14D292E0C0D1D00793267 /* secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -334,6 +362,7 @@
 		};
 		641263D52DD22944008614A2 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 64E14D292E0C0D1D00793267 /* secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -396,8 +425,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"apilist/Preview Content\"";
+				DEVELOPMENT_TEAM = 9UVU6F3MA3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = apilist/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Microphone is needed to use Apilist with your voice. The data is not recorded but it's sent to our servers to process and transcribe it to text.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -424,8 +456,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"apilist/Preview Content\"";
+				DEVELOPMENT_TEAM = 9UVU6F3MA3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = apilist/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Microphone is needed to use Apilist with your voice. The data is not recorded but it's sent to our servers to process and transcribe it to text.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -552,6 +587,33 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		648B56082DF3587800AB50F8 /* XCRemoteSwiftPackageReference "swift-algorithms" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-algorithms.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.1;
+			};
+		};
+		64A5FBF42DE508AD00F8995D /* XCRemoteSwiftPackageReference "AnyCodable" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Flight-School/AnyCodable.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.6.7;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		64A5FBF52DE508AD00F8995D /* AnyCodable */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 64A5FBF42DE508AD00F8995D /* XCRemoteSwiftPackageReference "AnyCodable" */;
+			productName = AnyCodable;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 641263A82DD22943008614A2 /* Project object */;
 }

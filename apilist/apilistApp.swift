@@ -5,11 +5,14 @@
 //  Created by Marco Mustapic on 12/05/2025.
 //
 
+import AVFoundation
 import SwiftUI
 import SwiftData
 
 @main
 struct apilistApp: App {
+    @StateObject private var viewModel = AppViewModel()
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -25,8 +28,37 @@ struct apilistApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            switch viewModel.recordPermission {
+            case .undetermined:
+                VStack {
+                    Text("Tap button to request recording permission")
+                    Button {
+                        Task {
+                            await viewModel.requestRecordPermission()
+                        }
+                    } label: {
+                        Text("Request")
+                    }
+                }
+            case .granted:
+                ContentView()
+            case .denied:
+                Text("Recording permission was denied. Go to Settings > Privacy & Security > Microphone and enable it for the app")
+            @unknown default:
+                Text("Recording permission was denied. Go to Settings > Privacy & Security > Microphone and enable it for the app")
+            }
         }
         .modelContainer(sharedModelContainer)
+    }
+}
+
+class AppViewModel: ObservableObject {
+    @Published
+    var recordPermission: AVAudioApplication.recordPermission = AVAudioApplication.shared.recordPermission
+
+    @MainActor
+    func requestRecordPermission() async {
+        await AVAudioApplication.requestRecordPermission()
+        recordPermission = AVAudioApplication.shared.recordPermission
     }
 }

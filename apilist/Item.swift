@@ -10,9 +10,17 @@ import SwiftData
 
 @Model
 final class Item {
+    var uid: String
+    var title: String
+    var text: String
     var timestamp: Date
-    
-    init(timestamp: Date) {
-        self.timestamp = timestamp
+    var completed: Bool
+
+    init(title: String, text: String) {
+        self.uid = UUID().uuidString
+        self.title = title
+        self.text = text
+        self.timestamp = Date.now
+        self.completed = false
     }
 }

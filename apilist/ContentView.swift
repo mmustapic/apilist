@@ -7,41 +7,343 @@
 
 import SwiftUI
 import SwiftData
+import AVFoundation
+import Combine
+import Accelerate
+
+enum VisualState {
+    case closed
+    case bar
+    case fullScreen
+
+}
+
+enum InputState {
+    case closed
+    case listening
+    case waiting
+    case talking
+    case finished
+}
+
+@MainActor
+struct ListenView: View {
+    @Environment(\.modelContext) private var modelContext
+    @State private var agent: TodoListAgent = TodoListAgent()
+
+    @State private var soundBars: [Float] = []
+    @State private var inputState: InputState = .closed
+    @State private var visualState: VisualState = .closed
+    @State private var error: Error? = nil
+
+    @State private var micAudioProvider = MicAudioProvider()
+
+    private let padding = 10.0
+
+    private var isWaiting: Binding<Bool> {
+        Binding(get: {
+            if case .waiting = inputState {
+                return true
+            }
+            return false
+        }, set: { newValue in
+        })
+    }
+
+    var body: some View {
+        ZStack {
+            // this is the view that can go full screen
+            backgroundView
+            // this is the view that contains the button itself, the transcript, etc
+            contentView
+        }
+    }
+
+    var backgroundView: some View {
+        HStack {
+            Color.blue
+
+        }
+        .frame(maxWidth: backgroundViewFrameMaxSize.width, maxHeight:  backgroundViewFrameMaxSize.height)
+        .cornerRadius(corderRadiusForState)
+        .ignoresSafeArea(edges: visualState == .fullScreen ? .all : [])
+        .padding(paddingForState)
+        .animation(.easeInOut, value: visualState)
+    }
+
+    var contentView: some View {
+        VStack() {
+            if visualState == .fullScreen {
+                Text(agent.response ?? "")
+                    .foregroundStyle(.white)
+                    .font(.system(size: 20))
+                Spacer()
+            }
+            ZStack {
+                Color.blue
+                if visualState == .closed {
+                    Image(systemName: "waveform.path")
+                        .foregroundStyle(.white)
+                        .font(.system(size: 30))
+                } else {
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 15)
+                        FrequencyView(signal: $soundBars, waiting: isWaiting)
+                            .frame(maxWidth: .infinity)
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.white)
+                            .font(.system(size: 30))
+                            .frame(maxWidth: 60, maxHeight: .infinity)
+                            .onTapGesture {
+                                stopListening()
+                            }
+                    }
+                }
+            }
+            .onTapGesture {
+                buttonTapped()
+            }
+            .frame(height: 60.0)
+        }
+        .frame(maxWidth: backgroundViewFrameMaxSize.width, maxHeight:  backgroundViewFrameMaxSize.height)
+        .cornerRadius(corderRadiusForState)
+        .padding(paddingForState)
+        .animation(.easeInOut, value: visualState)
+        .onReceive(micAudioProvider.samples.receive(on: RunLoop.main)) { samples in
+            self.soundBars = samples
+        }
+        .onReceive(micAudioProvider.audioChunk.receive(on: RunLoop.main)) { chunk in
+            process(chunk: chunk)
+        }
+        .onAppear() {
+            agent.delegate = self
+        }
+        .onDisappear {
+            stopListening()
+        }
+        .onChange(of: agent.response) { oldValue, newValue in
+            if newValue != nil {
+                do {
+                    try startListening()
+                } catch {
+                    self.error = error
+                }
+                visualState = .fullScreen
+            }
+        }
+    }
+
+    private func stopListening() {
+        visualState = .closed
+        inputState = .closed
+
+        // TODO: stop agent too
+
+        agent.cancel()
+        micAudioProvider.stop()
+    }
+
+    private func buttonTapped() {
+        do {
+            if inputState == .closed {
+                visualState = .bar
+                inputState = .waiting
+                try prepareToListen()
+                try startListening()
+                agent.reset()
+            } else {
+                stopListening()
+            }
+        } catch {
+            self.error = error
+        }
+    }
+
+    private func prepareToListen() throws {
+        try micAudioProvider.prepare()
+    }
+
+    private func startListening() throws {
+        do {
+            try micAudioProvider.record()
+            inputState = .listening
+        } catch {
+            self.error = error
+        }
+    }
+
+    private func pauseListening() {
+        inputState = .waiting
+        micAudioProvider.pause()
+    }
+
+    private func process(chunk: [Float]) {
+        pauseListening()    // stop receiving chunks too
+
+        Task {
+            let wav = floatToWav(samples: chunk, rate: Int(self.micAudioProvider.sampleRate))
+            let text = try await OpenAI.shared.transcribe(wav: wav)
+//            agent.send(text: "remember to have lunch tomorrow")
+            agent.send(text: text)
+        }
+    }
+
+    private var backgroundViewFrameMaxSize: CGSize {
+        switch visualState {
+        case .closed: CGSize(width: 60.0, height: 60.0)
+        case .bar: CGSize(width: CGFloat.infinity, height: 60.0)
+        case .fullScreen: CGSize(width: CGFloat.infinity, height: CGFloat.infinity)
+        }
+    }
+
+    private var paddingForState: EdgeInsets {
+        switch visualState {
+        case .closed: EdgeInsets(top: 0.0, leading: 10.0, bottom: 0.0, trailing: 10.0)
+        case .bar: EdgeInsets(top: 0.0, leading: 10.0, bottom: 0.0, trailing: 10.0)
+        case .fullScreen: EdgeInsets()
+        }
+    }
+
+    private var corderRadiusForState: CGFloat {
+        switch visualState {
+        case .closed, .bar: 30.0
+        case .fullScreen: 0.0
+        }
+    }
+}
+
+enum ButtonState {
+    case closed
+    case bar
+    case fullscreen
+}
+
+enum ButtonContentState {
+    case soundBars
+    case waiting
+}
+
+extension ListenView: @preconcurrency TodoListAgentDelegate {
+    func createItem(title: String, description: String) -> TodoListAgent.Item {
+        let newItem = Item(title: title, text: description)
+        DispatchQueue.main.async {
+            modelContext.insert(newItem)
+        }
+        return newItem.toFunctionHandlerItem()
+    }
+    
+    func getAllItems() throws -> [TodoListAgent.Item] {
+        let descriptor = FetchDescriptor<Item>()
+        var items: [Item] = []
+        try DispatchQueue.main.sync {
+            items = try modelContext.fetch(descriptor)
+        }
+        return items.map {  $0.toFunctionHandlerItem() }
+    }
+
+    func deleteItem(uid: String) throws -> Bool {
+        let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.uid == uid} )
+        var status = false
+        try DispatchQueue.main.sync {
+            if let first = try modelContext.fetch(descriptor).first {
+                modelContext.delete(first)
+                status = true
+            }
+        }
+        return status
+    }
+
+    func getItem(uid: String) throws -> TodoListAgent.Item? {
+        let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.uid == uid} )
+        var item: TodoListAgent.Item? = nil
+        try DispatchQueue.main.sync {
+            item = try modelContext.fetch(descriptor).first?.toFunctionHandlerItem()
+        }
+        return item
+    }
+
+    func updateItem(uid: String, title: String?, description: String?) throws -> Bool {
+        let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.uid == uid} )
+        var status = false
+        try DispatchQueue.main.sync {
+            if let first = try modelContext.fetch(descriptor).first {
+                if let title { first.title = title }
+                if let description { first.text = description }
+                try modelContext.save()
+                status = true
+            }
+        }
+        return status
+    }
+
+    func setItemState(uid: String, state: Bool) throws -> Bool {
+        let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.uid == uid} )
+        var status = false
+        try DispatchQueue.main.sync {
+            if let first = try modelContext.fetch(descriptor).first {
+                first.completed = state
+                try modelContext.save()
+                status = true
+            }
+        }
+        return status
+    }
+
+
+    func finish() {
+        Task { @MainActor in
+            stopListening()
+        }
+    }
+}
+
+extension Item {
+    func toFunctionHandlerItem() -> TodoListAgent.Item {
+        TodoListAgent.Item(id: self.uid,
+                             title: self.title,
+                             description: self.text,
+                             status: self.completed ? .closed : .open)
+    }
+}
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var items: [Item]
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        ZStack(alignment: .bottomTrailing) {
+            NavigationSplitView {
+                List {
+                    ForEach(items) { item in
+                        NavigationLink {
+                            ItemView(item: item)
+                            Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
+                        } label: {
+                            Text("\(item.title) \(item.completed ? "" : "")")
+                        }
+                    }
+                    .onDelete(perform: deleteItems)
+                }
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        EditButton()
+                    }
+                    ToolbarItem {
+                        Button(action: addItem) {
+                            Label("Add Item", systemImage: "plus")
+                        }
                     }
                 }
-                .onDelete(perform: deleteItems)
+            } detail: {
+                Text("Select an item")
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
+            ListenView()
         }
     }
 
     private func addItem() {
         withAnimation {
-            let newItem = Item(timestamp: Date())
+            let newItem = Item(title: "something", text: "hi there")
             modelContext.insert(newItem)
         }
     }
@@ -51,6 +353,21 @@ struct ContentView: View {
             for index in offsets {
                 modelContext.delete(items[index])
             }
+        }
+    }
+}
+
+struct ItemView: View {
+    let item: Item
+
+    var body: some View {
+        VStack {
+            Text("\(item.title)")
+                .font(Font.system(size: 14))
+            Text("\(item.text)")
+                .font(Font.system(size: 12))
+            Text("UID: \(item.uid)")
+            Text("Date: \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
         }
     }
 }
