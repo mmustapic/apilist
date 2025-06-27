@@ -8,16 +8,6 @@ import SwiftData
 import SwiftUI
 
 
-protocol TodoListAgentDelegate {
-    func createItem(title: String, description: String) -> TodoListAgent.Item
-    func getAllItems() throws -> [TodoListAgent.Item]
-    func deleteItem(uid: String) throws -> Bool
-    func getItem(uid: String) throws -> TodoListAgent.Item?
-    func updateItem(uid: String, title: String?, description: String?) throws -> Bool
-    func setItemState(uid: String, state: Bool) throws -> Bool
-    func finish()
-}
-
 @Observable
 class TodoListAgent {
     actor CancellationActor {
@@ -28,7 +18,13 @@ class TodoListAgent {
         }
     }
 
-    var delegate: TodoListAgentDelegate? = nil // should this be observable?
+    var onCreateItem: ((_ title: String, _ description: String) async throws -> TodoListAgent.Item)? = nil
+    var onGetAllItems: (() async throws -> [TodoListAgent.Item])? = nil
+    var onGetItem: ((_ uid: String) async throws -> TodoListAgent.Item?)? = nil
+    var onDeleteItem: ((_ uid: String) async throws -> Bool)? = nil
+    var onUpdateItem: ((_ uid: String, _ title: String?, _ description: String?) async throws -> Bool)? = nil
+    var onSetItemState: ((_ uid: String, _ state: Bool) async throws -> Bool)? = nil
+    var onFinish: (() async throws -> ())? = nil
 
     var response: String? = nil // response after calling agent's send(text), we don't need an async call for it
 
@@ -38,41 +34,38 @@ class TodoListAgent {
     }()
 
     private func handle(functionName: String, parameters: String) async throws -> String {
-        guard let delegate else {
-            throw AgentError.handlerNotReady
-        }
         switch functionName {
         case "createItem":
             let input = try JSONDecoder().decode(CreateItemInput.self, from: parameters.data(using: .utf8)!)
-            let created = delegate.createItem(title: input.title, description: input.description)
+            guard let created = try await onCreateItem?(input.title, input.description) else { return "{}" }
             let json = try JSONEncoder().encode(CreateItemOutput(item: created))
             return String(data: json, encoding: .utf8)!
         case "getAllItems":
-            let items = try delegate.getAllItems()
+            guard let items = try await onGetAllItems?() else { return "{}" }
             let json = try JSONEncoder().encode(GetAllItemsOuput(items: items))
             return String(data: json, encoding: .utf8)!
         case "getItem":
             let input = try JSONDecoder().decode(GetItemInput.self, from: parameters.data(using: .utf8)!)
-            let item = try delegate.getItem(uid: input.id)
+            guard let item = try await onGetItem?(input.id) else { return "{}" }
             let json = try JSONEncoder().encode(GetItemOutput(item: item))
             return String(data: json, encoding: .utf8)!
         case "deleteItem":
             let input = try JSONDecoder().decode(DeleteItemInput.self, from: parameters.data(using: .utf8)!)
-            let result = try delegate.deleteItem(uid: input.id)
+            guard let result = try await onDeleteItem?(input.id) else { return "{}" }
             let json = try JSONEncoder().encode(DeleteItemOutput(deleted: result))
             return String(data: json, encoding: .utf8)!
         case "updateItem":
             let input = try JSONDecoder().decode(UpdateItemInput.self, from: parameters.data(using: .utf8)!)
-            let result = try delegate.updateItem(uid: input.id, title: input.title, description: input.description)
+            guard let result = try await onUpdateItem?(input.id, input.title, input.description) else { return "{}" }
             let json = try JSONEncoder().encode(UpdateItemOutput(updated: result))
             return String(data: json, encoding: .utf8)!
         case "setItemState":
             let input = try JSONDecoder().decode(SetItemStateInput.self, from: parameters.data(using: .utf8)!)
-            let result = try delegate.setItemState(uid: input.id, state: input.state)
+            guard let result = try await onSetItemState?(input.id, input.state) else { return "{}" }
             let json = try JSONEncoder().encode(SetItemStateOutput(updated: result))
             return String(data: json, encoding: .utf8)!
         case "finish":
-            delegate.finish()
+            try await onFinish?()
             return "{}"
         default:
             throw AgentError.unknownFunction(name: functionName)

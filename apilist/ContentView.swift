@@ -116,7 +116,13 @@ struct ListenView: View {
             process(chunk: chunk)
         }
         .onAppear() {
-            agent.delegate = self
+            agent.onFinish = finish
+            agent.onCreateItem = createItem
+            agent.onDeleteItem = deleteItem
+            agent.onUpdateItem = updateItem
+            agent.onGetItem = getItem
+            agent.onSetItemState = setItemState
+            agent.onGetAllItems = getAllItems
         }
         .onDisappear {
             stopListening()
@@ -181,10 +187,12 @@ struct ListenView: View {
         pauseListening()    // stop receiving chunks too
 
         Task {
-            let wav = floatToWav(samples: chunk, rate: Int(self.micAudioProvider.sampleRate))
-            let text = try await OpenAI.shared.transcribe(wav: wav)
-//            agent.send(text: "remember to have lunch tomorrow")
-            agent.send(text: text)
+            await MainActor.run {
+                let wav = floatToWav(samples: chunk, rate: Int(self.micAudioProvider.sampleRate))
+    //            let text = try await OpenAI.shared.transcribe(wav: wav)
+                agent.send(text: "remember to have lunch tomorrow")
+    //            agent.send(text: text)
+            }
         }
     }
 
@@ -223,77 +231,51 @@ enum ButtonContentState {
     case waiting
 }
 
-extension ListenView: @preconcurrency TodoListAgentDelegate {
-    func createItem(title: String, description: String) -> TodoListAgent.Item {
+extension ListenView {
+    func createItem(title: String, description: String) async throws -> TodoListAgent.Item {
         let newItem = Item(title: title, text: description)
-        DispatchQueue.main.async {
-            modelContext.insert(newItem)
-        }
+        modelContext.insert(newItem)
         return newItem.toFunctionHandlerItem()
     }
     
-    func getAllItems() throws -> [TodoListAgent.Item] {
+    func getAllItems() async throws -> [TodoListAgent.Item] {
         let descriptor = FetchDescriptor<Item>()
-        var items: [Item] = []
-        try DispatchQueue.main.sync {
-            items = try modelContext.fetch(descriptor)
-        }
+        let items = try modelContext.fetch(descriptor)
         return items.map {  $0.toFunctionHandlerItem() }
     }
 
-    func deleteItem(uid: String) throws -> Bool {
+    func deleteItem(uid: String) async throws -> Bool {
         let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.uid == uid} )
-        var status = false
-        try DispatchQueue.main.sync {
-            if let first = try modelContext.fetch(descriptor).first {
-                modelContext.delete(first)
-                status = true
-            }
-        }
-        return status
+        guard let first = try modelContext.fetch(descriptor).first else { return false }
+        modelContext.delete(first)
+        return true
     }
 
-    func getItem(uid: String) throws -> TodoListAgent.Item? {
+    func getItem(uid: String) async throws -> TodoListAgent.Item? {
         let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.uid == uid} )
-        var item: TodoListAgent.Item? = nil
-        try DispatchQueue.main.sync {
-            item = try modelContext.fetch(descriptor).first?.toFunctionHandlerItem()
-        }
+        let item = try modelContext.fetch(descriptor).first?.toFunctionHandlerItem()
         return item
     }
 
-    func updateItem(uid: String, title: String?, description: String?) throws -> Bool {
+    func updateItem(uid: String, title: String?, description: String?) async throws -> Bool {
         let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.uid == uid} )
-        var status = false
-        try DispatchQueue.main.sync {
-            if let first = try modelContext.fetch(descriptor).first {
-                if let title { first.title = title }
-                if let description { first.text = description }
-                try modelContext.save()
-                status = true
-            }
-        }
-        return status
+        guard let first = try modelContext.fetch(descriptor).first  else { return false }
+        if let title { first.title = title }
+        if let description { first.text = description }
+        try modelContext.save()
+        return true
     }
 
-    func setItemState(uid: String, state: Bool) throws -> Bool {
+    func setItemState(uid: String, state: Bool) async throws -> Bool {
         let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.uid == uid} )
-        var status = false
-        try DispatchQueue.main.sync {
-            if let first = try modelContext.fetch(descriptor).first {
-                first.completed = state
-                try modelContext.save()
-                status = true
-            }
-        }
-        return status
+        guard let first = try modelContext.fetch(descriptor).first else { return false }
+        first.completed = state
+        try modelContext.save()
+        return true
     }
 
-
-    func finish() {
-        Task { @MainActor in
-            stopListening()
-        }
+    func finish() async throws {
+        stopListening()
     }
 }
 
