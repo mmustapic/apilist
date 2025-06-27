@@ -187,12 +187,10 @@ struct ListenView: View {
         pauseListening()    // stop receiving chunks too
 
         Task {
-            await MainActor.run {
-                let wav = floatToWav(samples: chunk, rate: Int(self.micAudioProvider.sampleRate))
-    //            let text = try await OpenAI.shared.transcribe(wav: wav)
-                agent.send(text: "remember to have lunch tomorrow")
-    //            agent.send(text: text)
-            }
+            let wav = floatToWav(samples: chunk, rate: Int(self.micAudioProvider.sampleRate))
+            let text = try await OpenAI.shared.transcribe(wav: wav)
+//                agent.send(text: "remember to have lunch tomorrow")
+            agent.send(text: text)
         }
     }
 
