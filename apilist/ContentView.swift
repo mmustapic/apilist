@@ -22,21 +22,22 @@ enum InputState {
     case closed
     case listening
     case waiting
-    case talking
+    case repeating
     case finished
 }
 
 @MainActor
 struct ListenView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var agent: TodoListAgent = TodoListAgent()
 
     @State private var soundBars: [Float] = []
     @State private var inputState: InputState = .closed
     @State private var visualState: VisualState = .closed
     @State private var error: Error? = nil
 
-    @State private var micAudioProvider = MicAudioProvider()
+    @Environment(MicAudioProvider.self) private var micAudioProvider
+    @Environment(AudioPlayer.self) private var audioPlayer
+    @Environment(TodoListAgent.self) private var agent
 
     private let padding = 10.0
 
@@ -95,7 +96,7 @@ struct ListenView: View {
                             .font(.system(size: 30))
                             .frame(maxWidth: 60, maxHeight: .infinity)
                             .onTapGesture {
-                                stopListening()
+                                stopAll()
                             }
                     }
                 }
@@ -109,11 +110,14 @@ struct ListenView: View {
         .cornerRadius(corderRadiusForState)
         .padding(paddingForState)
         .animation(.easeInOut, value: visualState)
-        .onReceive(micAudioProvider.samples.receive(on: RunLoop.main)) { samples in
-            self.soundBars = samples
+        .onChange(of: micAudioProvider.samples) { oldSamples, newSamples in
+            self.soundBars = newSamples
         }
-        .onReceive(micAudioProvider.audioChunk.receive(on: RunLoop.main)) { chunk in
-            process(chunk: chunk)
+        .onChange(of: audioPlayer.samples) { oldSamples, newSamples in
+            self.soundBars = newSamples
+        }
+        .onChange(of: micAudioProvider.chunk) { oldChunk, newChunk in
+            process(chunk: newChunk)
         }
         .onAppear() {
             agent.onFinish = finish
@@ -125,7 +129,7 @@ struct ListenView: View {
             agent.onGetAllItems = getAllItems
         }
         .onDisappear {
-            stopListening()
+            stopAll()
         }
         .onChange(of: agent.response) { oldValue, newValue in
             if newValue != nil {
@@ -139,7 +143,8 @@ struct ListenView: View {
         }
     }
 
-    private func stopListening() {
+    // close bar, stop mic and audio playback
+    private func stopAll() {
         visualState = .closed
         inputState = .closed
 
@@ -147,6 +152,7 @@ struct ListenView: View {
 
         agent.cancel()
         micAudioProvider.stop()
+        audioPlayer.stop()
     }
 
     private func buttonTapped() {
@@ -158,7 +164,7 @@ struct ListenView: View {
                 try startListening()
                 agent.reset()
             } else {
-                stopListening()
+                stopAll()
             }
         } catch {
             self.error = error
@@ -188,6 +194,10 @@ struct ListenView: View {
 
         Task {
             let wav = floatToWav(samples: chunk, rate: Int(self.micAudioProvider.sampleRate))
+            inputState = .repeating
+            try await audioPlayer.play(samples: chunk)
+            audioPlayer.stop()
+            inputState = .waiting
             let text = try await OpenAI.shared.transcribe(wav: wav)
 //                agent.send(text: "remember to have lunch tomorrow")
             agent.send(text: text)
@@ -273,7 +283,7 @@ extension ListenView {
     }
 
     func finish() async throws {
-        stopListening()
+        stopAll()
     }
 }
 
@@ -304,16 +314,16 @@ struct ContentView: View {
                     }
                     .onDelete(perform: deleteItems)
                 }
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        EditButton()
-                    }
-                    ToolbarItem {
-                        Button(action: addItem) {
-                            Label("Add Item", systemImage: "plus")
-                        }
-                    }
-                }
+//                .toolbar {
+//                    ToolbarItem(placement: .navigationBarTrailing) {
+//                        EditButton()
+//                    }
+//                    ToolbarItem {
+//                        Button(action: addItem) {
+//                            Label("Add Item", systemImage: "plus")
+//                        }
+//                    }
+//                }
             } detail: {
                 Text("Select an item")
             }

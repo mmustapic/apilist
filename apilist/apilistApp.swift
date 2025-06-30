@@ -12,6 +12,9 @@ import SwiftData
 @main
 struct apilistApp: App {
     @StateObject private var viewModel = AppViewModel()
+    @State private var micAudioProvider = MicAudioProvider()
+    @State private var audioPlayer = AudioPlayer(sampleRate: 16000)
+    @State private var agent: TodoListAgent = TodoListAgent()
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -42,6 +45,9 @@ struct apilistApp: App {
                 }
             case .granted:
                 ContentView()
+                    .environment(micAudioProvider)
+                    .environment(audioPlayer)
+                    .environment(agent)
             case .denied:
                 Text("Recording permission was denied. Go to Settings > Privacy & Security > Microphone and enable it for the app")
             @unknown default:

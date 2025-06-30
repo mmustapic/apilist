@@ -10,39 +10,29 @@ import Combine
 
 @Observable
 public class MicAudioProvider {
-    let samplesSubject = PassthroughSubject<[Float], Never>()
-    public let samples: AnyPublisher<[Float], Never>
-    
-    private var accumulatedSamples = [Float]()
-    private var accumulatedSampleThreshold: Double = 0.1    // minimum audio to send is 0.2 seconds
-    private var silentSampleCount: Int = 0 // number of samples that were silent, so we can decide when the user stopped talking and send the chunk
-    private let silentSampleThreshold = 1.0 // after this number of silent seconds, we send the audio chunnk
-    let audioChunkSubject = PassthroughSubject<[Float], Never>()
-    public let audioChunk: AnyPublisher<[Float], Never>
+    public var samples: [Float] = []
+    public var chunk: [Float] = []
 
-    private let audioEngine = AVAudioEngine()
+    @ObservationIgnored private var accumulatedSamples = [Float]()
+    @ObservationIgnored private var accumulatedSampleThreshold: Double = 0.1    // minimum audio to send is 0.2 seconds
+    @ObservationIgnored private var silentSampleCount: Int = 0 // number of samples that were silent, so we can decide when the user stopped talking and send the chunk
+    @ObservationIgnored private let silentSampleThreshold = 1.0 // after this number of silent seconds, we send the audio chunnk
 
-    let preferredSampleRate: Double = 16000
-    var sampleRate: Double = 0.0
+    @ObservationIgnored private let audioEngine = AVAudioEngine()
+
+    @ObservationIgnored let preferredSampleRate: Double = 16000
+    @ObservationIgnored var sampleRate: Double = 0.0
 
     public enum MicAudioProviderError: Error {
         case permissionToRecordNotGranted
     }
 
     init() {
-        samples = samplesSubject
-            .throttle(for: .milliseconds(16), scheduler: RunLoop.main, latest: true)
-            .eraseToAnyPublisher()
-
-        audioChunk = audioChunkSubject
-            .receive(on: RunLoop.main)
-            .eraseToAnyPublisher()
-
         accumulatedSamples.reserveCapacity(Int(preferredSampleRate) * 10)  // 10 seconds of audio, supposing 48kHz input
     }
 
     public func prepare() throws {
-        try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .measurement)
+        try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default)
         try AVAudioSession.sharedInstance().setPreferredSampleRate(preferredSampleRate)
         try AVAudioSession.sharedInstance().setActive(true)
 
@@ -52,13 +42,13 @@ public class MicAudioProvider {
 
         let minimumBufferSize: Int = 1024
         input.installTap(onBus: 0, bufferSize: UInt32(minimumBufferSize), format: format) { [weak self] buffer, _ in
-            let channel = buffer.floatChannelData?[0]
+            let channelData = buffer.floatChannelData?[0]
             let length = Int(buffer.frameLength)
-            // data could be > than minimumBufferSize
-            let data = Array(UnsafeBufferPointer(start: channel, count: length))
-
-            self?.appendNonSilentSamples(data: data, minimumBufferSize: minimumBufferSize, frequency: Int(format.sampleRate))
-            self?.sendSamples(data: data, minimumBufferSize: minimumBufferSize)
+            if length >= minimumBufferSize {
+                let data = Array(UnsafeBufferPointer(start: channelData, count: length))
+                self?.appendNonSilentSamples(data: data, minimumBufferSize: minimumBufferSize, frequency: Int(format.sampleRate))
+                self?.samples = downsample(data: data, minimumBufferSize: minimumBufferSize, finalNumberOfSamples: 16)
+            }
         }
     }
 
@@ -78,22 +68,9 @@ public class MicAudioProvider {
 
     func pause() {
         if audioEngine.isRunning {
+            print("pausing mic")
             audioEngine.pause()
         }
-    }
-
-    private func sendSamples(data: [Float], minimumBufferSize: Int) {
-        // trim to a multiple of minimumBufferSize
-        let multiple = data.count / minimumBufferSize
-        let trimmed = data.prefix(multiple * minimumBufferSize)
-        let numberOfChunks = 16    // just return 16 values
-        let chunkSize = trimmed.count / numberOfChunks
-        let reduced = stride(from: 0, to: trimmed.count, by: chunkSize).map { i -> Float in
-            let chunk = trimmed[i..<i+chunkSize]
-            return vDSP.maximum(chunk)
-        }
-        let clipped = vDSP.clip(reduced, to: -1.0...1.0)
-        samplesSubject.send(clipped)
     }
 
     private func appendNonSilentSamples(data: [Float], minimumBufferSize: Int, frequency: Int) {
@@ -115,7 +92,7 @@ public class MicAudioProvider {
                // if silence is long enough, send what we accumulated, but only if it is significant
                 if Double(silentSampleCount) / sampleRate > silentSampleThreshold &&
                     Double(accumulatedSamples.count) / sampleRate > accumulatedSampleThreshold {
-                    audioChunkSubject.send(accumulatedSamples)
+                    chunk = accumulatedSamples
                     // reset accumulated samples
                     accumulatedSamples.removeAll()
                     silentSampleCount = 0
@@ -123,6 +100,21 @@ public class MicAudioProvider {
             }
         }
     }
+}
+
+func downsample(data: [Float], minimumBufferSize: Int, finalNumberOfSamples: Int) -> [Float] {
+    // trim to a multiple of minimumBufferSize
+    if data.count < minimumBufferSize {
+        print("here")
+    }
+    let multiple = data.count / minimumBufferSize
+    let trimmed = data.prefix(multiple * minimumBufferSize)
+    let chunkSize = trimmed.count / finalNumberOfSamples
+    let reduced = stride(from: 0, to: trimmed.count, by: chunkSize).map { i -> Float in
+        let chunk = trimmed[i..<i+chunkSize]
+        return vDSP.maximum(chunk)
+    }
+    return vDSP.clip(reduced, to: -1.0...1.0)
 }
 
 func floatArrayToPCMData(_ samples: [Float]) -> Data {
